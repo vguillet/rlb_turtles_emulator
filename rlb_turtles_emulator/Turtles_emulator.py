@@ -1,11 +1,13 @@
 
 import rclpy
 from rclpy.node import Node
+from sensor_msgs.msg import JointState, LaserScan
 from geometry_msgs.msg import Twist, PoseStamped
-from rclpy.qos import QoSProfile
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 import math
 import numpy as np # Scientific computing library for Python
+import time
+from rlb_config.simulation_parameters import agent_count, agent_start_index, real_time_factor, auto_dt, agent_spawn_delay, timers_period
 
 
 def main(args=None):
@@ -25,16 +27,19 @@ class Turtles_emulator(Node):
         Node.__init__(self, 'Turtles_emulator')
 
         # -> Setup sim variables
-        self.agent_count = 1
+        self.agent_count = agent_count
+        self.agent_starting_index = agent_start_index
         self.agents_dict = {}
 
-        self.timer_step = 0.000001
-        self.realtime_factor = 1.0 
+        self.timer_step = timers_period
+        self.realtime_factor = real_time_factor
 
-        self.auto_dt = True
+        self.auto_dt = auto_dt
 
         for i in range(self.agent_count):
-            self.add_agent(name=f"Turtle_{i+2}")
+            self.add_agent(name=f"Turtle_{i + self.agent_starting_index}")
+            print(f"-> Agent Turtle_{i + self.agent_starting_index} created")
+            time.sleep(agent_spawn_delay)
 
         self.sim_timer = self.create_timer(
             timer_period_sec=self.timer_step,
@@ -100,24 +105,44 @@ class Agent(Node):
 
         self.pose_publisher = sim_node.create_publisher(
             msg_type=PoseStamped,
-            topic=f"/{self.robot_id}/pose",
+            topic=f"/{self.robot_id}/state/pose",
             qos_profile=qos
             )
 
         # ----------------- timer
-        timer_period = .000001  # seconds
+        timer_period = timers_period  # seconds
 
         self.pose_timer = sim_node.create_timer(
             timer_period, 
             self.publish_pose
             )
 
+        # ----------------------------------- Lazer scan publisher
+        qos = QoSProfile(
+            reliability=QoSReliabilityPolicy.RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT,
+            history=QoSHistoryPolicy.RMW_QOS_POLICY_HISTORY_KEEP_LAST,
+            depth=1
+            )
+
+        self.lazer_scan_publisher = self.create_publisher(
+            msg_type=LaserScan,
+            topic=f"/{self.robot_id}/state/scan",
+            qos_profile=qos
+        )
+
+        # ----------------- timer
+        self.lazer_scan_timer = sim_node.create_timer(
+            timer_period, 
+            self.publish_lazer_scan
+            )
+
+
         # ----------------------------------- Instruction subscription
         qos = QoSProfile(depth=10)
         
         self.cmd_vel_subscriber = sim_node.create_subscription(
             msg_type=Twist,
-            topic=f"/{self.robot_id}/cmd_vel",
+            topic=f"/{self.robot_id}/control/cmd_vel",
             callback=self.cmd_vel_callback,
             qos_profile=qos
             )
@@ -151,9 +176,19 @@ class Agent(Node):
 
         self.pose_publisher.publish(msg=msg)
 
+    def publish_lazer_scan(self):
+        msg = LaserScan()
+
+        # -> Empty scan
+        msg.ranges = []
+        msg.range_min = 0.
+        msg.range_max = 1.
+
+        self.lazer_scan_publisher.publish(msg=msg)
+
     def cmd_vel_callback(self, twist):
-        from rlb_controller.robot_parameters import BURGER_MAX_LIN_VEL, BURGER_MAX_ANG_VEL
-        from rlb_controller.simulation_parameters import lin_vel_scaling_factor, ang_vel_scaling_factor
+        from rlb_config.robot_parameters import BURGER_MAX_LIN_VEL, BURGER_MAX_ANG_VEL
+        from rlb_config.simulation_parameters import lin_vel_scaling_factor, ang_vel_scaling_factor
 
         def check_lin_vel(lin_vel):
             if lin_vel > BURGER_MAX_LIN_VEL:
@@ -205,10 +240,10 @@ class Agent(Node):
 
             self.pose["orientation"]["psi"] = -self.pose["orientation"]["psi"] 
 
-        print("-", self.robot_id + ":")
-        print("         x:", self.pose["position"]["x"], self.vel["linear"]["x"])
-        print("         y:", self.pose["position"]["y"], self.vel["linear"]["y"])
-        print("         psi:", self.pose["orientation"]["psi"], self.vel["angular"]["r"])
+        # print("-", self.robot_id + ":")
+        # print("         x:", self.pose["position"]["x"], self.vel["linear"]["x"])
+        # print("         y:", self.pose["position"]["y"], self.vel["linear"]["y"])
+        # print("         psi:", self.pose["orientation"]["psi"], self.vel["angular"]["r"])
     
     @staticmethod
     def get_quaternion_from_euler(roll, pitch, yaw):
