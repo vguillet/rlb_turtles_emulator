@@ -105,7 +105,7 @@ class Agent(Node):
 
         self.pose_publisher = sim_node.create_publisher(
             msg_type=PoseStamped,
-            topic=f"/{self.robot_id}/state/pose",
+            topic=f"/{self.robot_id}/pose",
             qos_profile=qos
             )
 
@@ -126,7 +126,7 @@ class Agent(Node):
 
         self.lazer_scan_publisher = self.create_publisher(
             msg_type=LaserScan,
-            topic=f"/{self.robot_id}/state/scan",
+            topic=f"/{self.robot_id}/scan",
             qos_profile=qos
         )
 
@@ -142,7 +142,7 @@ class Agent(Node):
         
         self.cmd_vel_subscriber = sim_node.create_subscription(
             msg_type=Twist,
-            topic=f"/{self.robot_id}/control/cmd_vel",
+            topic=f"/{self.robot_id}/cmd_vel",
             callback=self.cmd_vel_callback,
             qos_profile=qos
             )
